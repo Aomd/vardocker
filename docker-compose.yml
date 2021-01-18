@@ -1,0 +1,80 @@
+version: "3.8"
+networks:
+  app-tier:
+    driver: bridge
+services:
+  ### REDIS Server #########################################
+  redis:
+    build: ./redis
+    volumes:
+      - ${DATA_PATH_HOST}/redis:/data
+    ports:
+      - "${REDIS_PORT}:6379"
+    networks:
+      - app-tier
+
+  ### NGINX Server #########################################
+  nginx:
+    build:
+      context: ./nginx
+      args:
+        # - CHANGE_SOURCE=${CHANGE_SOURCE}
+        - http_proxy
+        - https_proxy
+        - no_proxy
+    volumes:
+      - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}${APP_CODE_CONTAINER_FLAG}
+      - ${DATA_PATH_HOST}/nginx/log:/var/log/nginx
+      - ${NGINX_SITES_PATH}:/etc/nginx/sites-available:ro
+      - ${NGINX_SSL_PATH}:/etc/nginx/ssl:ro
+    depends_on:
+      - php
+    ports:
+      - "${NGINX_HOST_HTTP_PORT}:80"
+      - "${NGINX_HOST_HTTPS_PORT}:443"
+      # - "${VARNISH_BACKEND_PORT}:81"
+
+    networks:
+      - app-tier
+  ### MySQL ################################################
+  mysql:
+    build:
+      context: ./mysql
+      args:
+        - MYSQL_VERSION=${MYSQL_VERSION}
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - TZ=${WORKSPACE_TIMEZONE}
+    volumes:
+      - ${DATA_PATH_HOST}/mysql:/var/lib/mysql
+      - ${MYSQL_ENTRYPOINT_INITDB}:/docker-entrypoint-initdb.d
+    ports:
+      - "${MYSQL_PORT}:3306"
+    networks:
+      - app-tier
+  ### PHP ################################################
+  php:
+    build:
+      context: ./php
+      args:
+        - PHP_VERSION=${PHP_VERSION}
+    ports:
+      - "${PHP_PORT}:9000"
+    volumes:
+      - ./php/php${PHP_VERSION}.ini:/usr/local/etc/php/php.ini
+      - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}${APP_CODE_CONTAINER_FLAG}
+    networks:
+      - app-tier
+  ### NODE ################################################
+  node:
+    build:
+      context: ./node
+      args:
+        - NODE_VERSION=${NODE_VERSION}
+    volumes:
+      - ${DATA_PATH_HOST}/node:/data/node
+    networks:
+      - app-tier
